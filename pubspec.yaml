@@ -2,3 +2,4 @@ name: canvas_obj
 description: A sample web application
 dependencies:
   browser: any
+  vector_math: ">=1.4.3 <2.0.0"

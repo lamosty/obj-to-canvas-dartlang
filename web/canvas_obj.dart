@@ -1,5 +1,6 @@
 import 'dart:html';
 import 'dart:math' as Math;
+import 'package:vector_math/vector_math.dart';
 
 void main() {
   ObjCanvas objCanvas = new ObjCanvas();
@@ -11,46 +12,61 @@ class ObjCanvas {
   CanvasElement _canvas;
   CanvasRenderingContext2D _context;
 
-  int _zoomFactor = 200;
+  final double _zoomFactor = 100.0;
 
-  int _viewPortX, _viewPortY;
+  final double _rotation = 5.0; // in degrees
+  double _translation = 0.1;
+  final double _scalingFactor = 10.0 / 100.0; // in percent
+
+  final double ZERO = 0.0;
+
+  double _viewPortX, _viewPortY;
+
+  List<Vector3> vertices;
+  List faces;
+  Matrix4 T;
 
   ObjCanvas() {
+    _translation *= _zoomFactor;
+
     _initializeCanvas();
     _initializeFileUpload();
+    _initializeInterfaceControllers();
   }
 
   _initializeFileUpload() {
     _readForm = querySelector("#read");
     _fileInput = querySelector("#files");
-    
-    _fileInput.onChange.listen((e) => _onFileInputChange());
 
+    _fileInput.onChange.listen((e) => _onFileInputChange());
   }
-  
+
   _initializeCanvas() {
     _canvas = querySelector("#canvas");
     _context = _canvas.getContext("2d");
 
-    _viewPortX = (_canvas.width / 2).toInt();
-    _viewPortY = (_canvas.height / 2).toInt();
+    _viewPortX = (_canvas.width / 2).toDouble();
+    _viewPortY = (_canvas.height / 2).toDouble();
   }
-  
+
   _onFileInputChange() {
     restartCanvas();
     _onFilesSelected(_fileInput.files);
   }
-  
+
   _onFilesSelected(List<File> files) {
     for (File file in files) {
       var reader = new FileReader();
-      
+
       reader.onLoad.listen((e) {
         Map parsedFile = _parseObjString(reader.result);
-        _drawFaces(parsedFile["vertices"], parsedFile["faces"]);
+        vertices = parsedFile["vertices"];
+        faces = parsedFile["faces"];
+
+        _drawFaces();
 
       });
-      
+
       reader.readAsText(file);
     }
   }
@@ -66,22 +82,20 @@ class ObjCanvas {
 
     List lines = objString.split("\n");
 
-    double coordX, coordY;
+    Vector3 vertex;
 
     lines.forEach((String line) {
       List<String> chars = line.split(" ");
 
       // vertex
       if (chars[0] == "v") {
-        coordX = double.parse(chars[1]);
-        coordY = double.parse(chars[2]);
+        vertex = new Vector3(
+          double.parse(chars[1]),
+          double.parse(chars[2]),
+          double.parse(chars[3])
+        );
 
-        if (!((coordX >= -3 && coordX <= 3) &&
-        (coordY >= -2 && coordY <= 2))) {
-          return;
-        }
-
-        vertices.add(_calcVertex(coordX, coordY));
+        vertices.add(_calcDefaultVertex(vertex));
 
         // face
       } else if (chars[0] == "f") {
@@ -100,7 +114,7 @@ class ObjCanvas {
     };
   }
 
-  void _drawFaces(List vertices, List faces) {
+  void _drawFaces() {
     _context.beginPath();
 
     int firstVertexX, firstVertexY, secondVertexX, secondVertexY;
@@ -108,15 +122,15 @@ class ObjCanvas {
     faces.forEach((List face) {
       for (int i = 0; i < face.length; i++) {
         if (i + 1 == face.length) {
-          firstVertexX = vertices[face[i] - 1][0];
-          firstVertexY = vertices[face[i] - 1][1];
-          secondVertexX = vertices[face[0] - 1][0];
-          secondVertexY = vertices[face[0] - 1][1];
+          firstVertexX = vertices[face[i] - 1][0].toInt();
+          firstVertexY = vertices[face[i] - 1][1].toInt();
+          secondVertexX = vertices[face[0] - 1][0].toInt();
+          secondVertexY = vertices[face[0] - 1][1].toInt();
         } else {
-          firstVertexX = vertices[face[i] - 1][0];
-          firstVertexY = vertices[face[i] - 1][1];
-          secondVertexX = vertices[face[i + 1] - 1][0];
-          secondVertexY = vertices[face[i + 1] - 1][1];
+          firstVertexX = vertices[face[i] - 1][0].toInt();
+          firstVertexY = vertices[face[i] - 1][1].toInt();
+          secondVertexX = vertices[face[i + 1] - 1][0].toInt();
+          secondVertexY = vertices[face[i + 1] - 1][1].toInt();
         }
         _drawLine(firstVertexX, firstVertexY, secondVertexX, secondVertexY);
       }
@@ -131,15 +145,108 @@ class ObjCanvas {
     _context.stroke();
   }
 
-  List<int> _calcVertex(double vertexX, double vertexY) {
-    vertexX = (vertexX * _zoomFactor) + _viewPortX;
-    vertexY = (vertexY * _zoomFactor) + _viewPortY;
+  Vector3 _calcDefaultVertex(Vector3 vertex) {
+    T = new Matrix4.translationValues(_viewPortX, _viewPortY, ZERO)
+      .scale(_zoomFactor, -_zoomFactor);
 
-    return [vertexX.toInt(), vertexY.toInt()];
+    return T.transform3(vertex);
   }
 
   void restartCanvas() {
     _context.clearRect(0, 0, _canvas.width, _canvas.height);
+  }
+
+  void _initializeInterfaceControllers() {
+    querySelectorAll("button").onClick.listen((MouseEvent event) {
+      ButtonElement btn = event.target;
+      var btnClass = btn.classes.first;
+      var btnDataValue = btn.dataset['value'];
+
+      if (btnClass == 'rotate') {
+        rotateModel(btnDataValue);
+        redraw();
+      } else if (btnClass == 'translate') {
+        translateModel(btnDataValue);
+        redraw();
+      } else if (btnClass == 'scale') {
+        scaleModel(btnDataValue);
+        redraw();
+      }
+    });
+
+  }
+
+  double _degreeToRadian(double degree) {
+    return degree * (Math.PI / 180.0);
+  }
+
+  void rotateModel(String axis) {
+    if (axis == "X") {
+      T = new Matrix4.rotationX(_degreeToRadian(_rotation));
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+    } else if (axis == "Y") {
+      T = new Matrix4.rotationY(_degreeToRadian(_rotation));
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+
+    } else if (axis == "Z") {
+      T = new Matrix4.rotationZ(_degreeToRadian(_rotation));
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+
+    }
+  }
+
+  void translateModel(String axis) {
+    if (axis == "X") {
+      T = new Matrix4.translationValues(_translation, ZERO, ZERO);
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+    } else if (axis == "Y") {
+      T = new Matrix4.translationValues(ZERO, _translation, ZERO);
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+    } else if (axis == "Z") {
+      T = new Matrix4.translationValues(ZERO, ZERO, _translation);
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+    }
+  }
+
+  void scaleModel(String moreOrLessSign) {
+    if (moreOrLessSign == "+") {
+      double scale = 1.0 + _scalingFactor;
+      T = new Matrix4.diagonal3Values(scale, scale, scale);
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+    } else if (moreOrLessSign == "-") {
+      double scale = 1.0 - _scalingFactor;
+      T = new Matrix4.diagonal3Values(scale, scale, scale);
+
+      vertices.forEach((vector) {
+        return T.transform3(vector);
+      });
+    }
+  }
+
+  void redraw() {
+    restartCanvas();
+    _drawFaces();
   }
 }
 

@@ -5,3 +5,7 @@ packages:
     description: browser
     source: hosted
     version: "0.9.1"
+  vector_math:
+    description: vector_math
+    source: hosted
+    version: "1.4.3"

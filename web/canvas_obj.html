@@ -8,13 +8,28 @@
   </head>
   <body>
     <canvas id="canvas" width="600" height="400"></canvas>
-    
+
     <form id="read">
       <input type="file" id="files" name="files[]" multiple>
     </form>
-    
+
+    <div>
+        <button class="rotate" data-value="X">Rotate X</button>
+        <button class="rotate" data-value="Y">Rotate Y</button>
+        <button class="rotate" data-value="Z">Rotate Z</button>
+    </div>
+    <div>
+        <button class="translate" data-value="X">Translate X</button>
+        <button class="translate" data-value="Y">Translate Y</button>
+        <button class="translate" data-value="Z">Translate Z</button>
+    </div>
+    <div>
+        <button class="scale" data-value="+">Scale +</button>
+        <button class="scale" data-value="-">Scale -</button>
+    </div>
+
 
     <script type="application/dart" src="canvas_obj.dart"></script>
-    <script src="packages/browser/dart.js"></script>
+    <script src="dart.js"></script>
   </body>
 </html>

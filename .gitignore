@@ -3,3 +3,4 @@ packages
 .project
 .DS_Store
 *.zip
+*.txt

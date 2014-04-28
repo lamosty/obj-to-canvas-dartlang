@@ -1,6 +1,7 @@
 import 'dart:html';
 import 'dart:math' as Math;
 import 'package:vector_math/vector_math.dart';
+import 'package:color/color.dart';
 
 void main() {
   ObjCanvas objCanvas = new ObjCanvas();
@@ -26,10 +27,15 @@ class ObjCanvas {
   List faces;
   Matrix4 T;
   Vector3 camera;
+  Vector3 light;
+
+  Color color;
 
   ObjCanvas() {
     _translation *= _zoomFactor;
     camera = new Vector3(0.0, 0.0, 1.0);
+    light = new Vector3(0.0, 0.0, 0.0);
+    color = new Color.rgb(0, 0, 0);
 
     _initializeCanvas();
     _initializeFileUpload();
@@ -87,6 +93,7 @@ class ObjCanvas {
     Vector3 vertex;
 
     lines.forEach((String line) {
+      line = line.replaceAll(new RegExp(r"\s+$"), "");
       List<String> chars = line.split(" ");
 
       // vertex
@@ -97,7 +104,7 @@ class ObjCanvas {
           double.parse(chars[3])
         );
 
-//        vertices.add(_calcDefaultVertex(vertex));
+
         vertices.add(vertex);
 
         // face
@@ -164,11 +171,33 @@ class ObjCanvas {
   }
 
   void _drawFace(List<Vector3> verticesToDraw, List face) {
+    Vector3 normalizedLight = new Vector3.copy(light).normalize();
+
+    var normalVector = _normalVector3(
+        verticesToDraw[face[0] - 1],
+        verticesToDraw[face[1] - 1],
+        verticesToDraw[face[2] - 1]
+    );
+
+    Vector3 jnv = new Vector3.copy(normalVector).normalize();
+
+    double koef = _scalarMultiplication(jnv, normalizedLight);
+
+    if (koef < 0.0) {
+      koef = 0.0;
+    }
+
+    Color newColor = new Color();
+
+    newColor.r = (color.r.toDouble() * koef).round();
+    newColor.g = (color.g.toDouble() * koef).round();
+    newColor.b = (color.b.toDouble() * koef).round();
+
+    _context.fillStyle = newColor.toHexString();
+    _context.beginPath();
+
     bool lastPoint = false;
     int firstVertexX, firstVertexY, secondVertexX, secondVertexY;
-
-    _context.fillStyle = '#f00';
-    _context.beginPath();
 
     for (int i = 0; i < face.length; i++) {
       if (i + 1 == face.length) {
@@ -196,6 +225,10 @@ class ObjCanvas {
 
     _context.closePath();
     _context.fill();
+  }
+
+  double _scalarMultiplication(Vector3 first, Vector3 second) {
+    return (first.x * second.x) + (first.y * second.y) + (first.z * second.z);
   }
 
   Vector3 _calcDefaultVertex(Vector3 vertex) {
@@ -228,6 +261,46 @@ class ObjCanvas {
       }
     });
 
+    querySelectorAll("input[type=number]").onChange.listen((MouseEvent event) {
+      NumberInputElement input = event.target;
+      var inputClass = input.classes.first;
+
+      if (inputClass == 'light') {
+        _changeLight(input);
+        redraw();
+      } else if (inputClass == 'color') {
+        _changeColor(input);
+        redraw();
+      }
+
+    });
+
+  }
+
+  void _changeLight(NumberInputElement input) {
+    double lightValue = double.parse(input.value);
+    var inputDataValue = input.dataset['value'];
+
+    if (inputDataValue == 'X') {
+      light.x = lightValue;
+    } else if (inputDataValue == 'Y') {
+      light.y = -lightValue;
+    } else if (inputDataValue == 'Z') {
+      light.z = lightValue;
+    }
+  }
+
+  void _changeColor(NumberInputElement input) {
+    int colorValue = int.parse(input.value);
+    var inputDataValue = input.dataset['value'];
+
+    if (inputDataValue == 'R') {
+      color.r = colorValue;
+    } else if (inputDataValue == 'G') {
+      color.g = colorValue;
+    } else if (inputDataValue == 'B') {
+      color.b = colorValue;
+    }
   }
 
   double _degreeToRadian(double degree) {
@@ -242,7 +315,7 @@ class ObjCanvas {
         return T.transform3(vector);
       });
     } else if (axis == "Y") {
-      T = new Matrix4.rotationY(_degreeToRadian(_rotation));
+      T = new Matrix4.rotationY(_degreeToRadian(-_rotation));
 
       vertices.forEach((vector) {
         return T.transform3(vector);

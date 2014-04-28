@@ -15,7 +15,7 @@ class ObjCanvas {
   final double _zoomFactor = 100.0;
 
   final double _rotation = 5.0; // in degrees
-  double _translation = 0.1;
+  double _translation = 0.1 / 100;
   final double _scalingFactor = 10.0 / 100.0; // in percent
 
   final double ZERO = 0.0;
@@ -25,9 +25,11 @@ class ObjCanvas {
   List<Vector3> vertices;
   List faces;
   Matrix4 T;
+  Vector3 camera;
 
   ObjCanvas() {
     _translation *= _zoomFactor;
+    camera = new Vector3(0.0, 0.0, 1.0);
 
     _initializeCanvas();
     _initializeFileUpload();
@@ -95,7 +97,8 @@ class ObjCanvas {
           double.parse(chars[3])
         );
 
-        vertices.add(_calcDefaultVertex(vertex));
+//        vertices.add(_calcDefaultVertex(vertex));
+        vertices.add(vertex);
 
         // face
       } else if (chars[0] == "f") {
@@ -115,34 +118,84 @@ class ObjCanvas {
   }
 
   void _drawFaces() {
-    _context.beginPath();
 
-    int firstVertexX, firstVertexY, secondVertexX, secondVertexY;
+    List<Vector3> verticesToDraw = [];
+
+    vertices.forEach((vertex) {
+      verticesToDraw.add(new Vector3.copy(vertex));
+    });
+
+    verticesToDraw.forEach((Vector3 vertex) {
+      return _calcDefaultVertex(vertex);
+    });
+
 
     faces.forEach((List face) {
-      for (int i = 0; i < face.length; i++) {
-        if (i + 1 == face.length) {
-          firstVertexX = vertices[face[i] - 1][0].toInt();
-          firstVertexY = vertices[face[i] - 1][1].toInt();
-          secondVertexX = vertices[face[0] - 1][0].toInt();
-          secondVertexY = vertices[face[0] - 1][1].toInt();
-        } else {
-          firstVertexX = vertices[face[i] - 1][0].toInt();
-          firstVertexY = vertices[face[i] - 1][1].toInt();
-          secondVertexX = vertices[face[i + 1] - 1][0].toInt();
-          secondVertexY = vertices[face[i + 1] - 1][1].toInt();
-        }
-        _drawLine(firstVertexX, firstVertexY, secondVertexX, secondVertexY);
+      if (_shouldDrawFace(face)) {
+        _drawFace(verticesToDraw, face);
       }
     });
-    _context.closePath();
   }
 
-  void _drawLine(int firstVertexX, int firstVertexY,
-            int secondVertexX, int secondVertexY) {
-    _context.moveTo(firstVertexX, firstVertexY);
-    _context.lineTo(secondVertexX, secondVertexY);
-    _context.stroke();
+  bool _shouldDrawFace(List face) {
+    var normalVector = _normalVector3(
+        vertices[face[0] - 1],
+        vertices[face[1] - 1],
+        vertices[face[2] - 1]
+    );
+
+    var dotProduct = normalVector.dot(camera);
+    double vectorLengths = normalVector.length * camera.length;
+
+    double angleBetween = dotProduct / vectorLengths;
+
+    return angleBetween < 0;
+  }
+
+  Vector3 _normalVector3(Vector3 first, Vector3 second, Vector3 third) {
+    Vector3 secondFirst = new Vector3.copy(second).sub(first);
+    Vector3 secondThird = new Vector3.copy(second).sub(third);
+
+    return new Vector3(
+        (secondFirst.y * secondThird.z) - (secondFirst.z * secondThird.y),
+        (secondFirst.z * secondThird.x) - (secondFirst.x * secondThird.z),
+        (secondFirst.x * secondThird.y) - (secondFirst.y * secondThird.x)
+    );
+  }
+
+  void _drawFace(List<Vector3> verticesToDraw, List face) {
+    bool lastPoint = false;
+    int firstVertexX, firstVertexY, secondVertexX, secondVertexY;
+
+    _context.fillStyle = '#f00';
+    _context.beginPath();
+
+    for (int i = 0; i < face.length; i++) {
+      if (i + 1 == face.length) {
+        lastPoint = true;
+      }
+
+      if (lastPoint) {
+        firstVertexX = verticesToDraw[face[i] - 1][0].toInt();
+        firstVertexY = verticesToDraw[face[i] - 1][1].toInt();
+        secondVertexX = verticesToDraw[face[0] - 1][0].toInt();
+        secondVertexY = verticesToDraw[face[0] - 1][1].toInt();
+      } else {
+        firstVertexX = verticesToDraw[face[i] - 1][0].toInt();
+        firstVertexY = verticesToDraw[face[i] - 1][1].toInt();
+        secondVertexX = verticesToDraw[face[i + 1] - 1][0].toInt();
+        secondVertexY = verticesToDraw[face[i + 1] - 1][1].toInt();
+      }
+
+      if (i == 0) {
+        _context.moveTo(firstVertexX, firstVertexY);
+      }
+
+      _context.lineTo(secondVertexX, secondVertexY);
+    }
+
+    _context.closePath();
+    _context.fill();
   }
 
   Vector3 _calcDefaultVertex(Vector3 vertex) {
@@ -154,6 +207,7 @@ class ObjCanvas {
 
   void restartCanvas() {
     _context.clearRect(0, 0, _canvas.width, _canvas.height);
+    T = null;
   }
 
   void _initializeInterfaceControllers() {
